@@ -1,0 +1,1636 @@
+---
+title: \LARGE __MovieLens Recommender System__
+author: \Large Carlos Outerelo
+output:
+    #pdf_document:
+    #  citation_package: natbib
+    #  df_print: kable
+    #  fig_crop: no
+    #  latex_engine: xelatex
+    #  toc_depth: 4
+    html_document:
+      toc: yes
+      toc_depth: 4
+      toc_float: TRUE
+      theme: united
+      highlight: tango
+      code_folding: show
+      fig_width: 14
+      fig_height: 10
+header-includes:
+    - \usepackage {hyperref}
+    - \hypersetup {colorlinks = true, linkcolor = blue, urlcolor = blue}
+---
+
+```{r setup, include=FALSE}
+if(!require(htmltools)) {
+  install.packages("htmltools")
+}
+library(htmltools)
+
+if(!require(knitr)) {
+  install.packages("knitr")
+}
+library(knitr)
+
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE,
+                      collapse = TRUE
+                      #tidy.opts = list(width.cutoff=80), tidy=TRUE
+                      )
+```
+
+```{css, echo=FALSE}
+br {
+	line-height: 30px;
+}
+
+li {
+	margin-top: 10px;
+	margin-bottom: 10px;
+}
+
+ul, ol {
+	margin-bottom: 15px;
+}
+
+.r-code-collapse {
+	margin-bottom: 25px;
+}
+
+h1, h2, h3, h4 {
+	margin-top: 25px;
+	margin-bottom: 25px;
+}
+
+h4 {
+	margin-bottom: 20px;
+	font-size: 20px;
+	font-weight: 500;
+}
+
+.author, .quoted {
+  margin-left: 20px;
+  font-style: italic; 
+  color: rgb(92, 92, 92);
+}
+
+.boolean {
+  color: rgb(155, 0, 192);
+}
+
+.string {
+  color: rgb(0, 160, 0);
+}
+
+.operator {
+  color: rgb(150, 150, 255);
+}
+
+.quote {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgb(72, 61, 139);
+}
+
+.faq {
+  margin-bottom: -10px;
+  margin-left: 30px;
+  font-size: 14px;
+  color: rgb(96, 1, 112)
+}
+
+.tocify-extend-page {
+  display: none
+}
+```
+
+\newpage
+\tableofcontents
+
+<br>
+
+\newpage
+# Preface
+This project aims to be as educational and detailed as possible to showcase my understanding and proficiency of [the R programming language](https://en.wikipedia.org/wiki/R_(programming_language)), [R Markdown](https://rmarkdown.rstudio.com/) and the topics at hand: [data science](https://en.wikipedia.org/wiki/Data_science) (manipulation, exploration, visualization...) and [machine learning](https://en.wikipedia.org/wiki/Machine_learning) (linear and matrix factorization models in particular).  
+Note that the R Markdown file outputs a .HTML document (that has been [uplodad to RPubs](https://rpubs.com/outerelocarlos/MovieLens-Recommender-System) where it can be properly visualized) as well as a .PDF file, both of which are available in [this project's GitHub repository](https://www.github.com/outerelocarlos/movielens-recommender-system).
+
+# 1. Introduction
+[Recommender systems](https://en.wikipedia.org/wiki/Recommender_system) are now as important as ever, with many of the most popular services of today's digital society (YouTube, Spotify, Amazon, Steam...) making use of them in order to provide users with the content they are most likely to consume and/or enjoy. To properly target their userbases, these businesses and platforms require user data to understand their behavior and preferences, which is where [data science](https://en.wikipedia.org/wiki/Data_science) comes into play. Data science drives the datamined user information through many different processes which can lead to the creation/construction of intelligent systems able to perform accurate data-backed predictions that are likely to be of interest and/or valuable to the users. For these predictions to be as accurate and successful as possible, current recommendation systems are built upon the most "in vogue" item from within the data science toolset: [machine learning](https://en.wikipedia.org/wiki/Machine_learning) algorithms.<br>
+
+Machine learning algorithms build prediction models based on the data they are supplied with. They improve their accuracy upon training, a process that loops through the sampled data contrasting guesses with real values to evaluate the algorithm' success so that it can develop a statistical model which maximizes its accuracy and best fits the supplied data. These models can be used in [classification](https://en.wikipedia.org/wiki/Statistical_classification) and [regression](https://en.wikipedia.org/wiki/Regression_analysis) exercises/scenarios (to predict integers/factors and continuous values, respectively) being able to uncover key insights and relationships from within the data that otherwise would be impossible to take grasp of. Recommender systems usually present regression-based scenarios where machine learning can be used to understand user data and provide insightful recommendations based on a set of factors/predictors, assigning each item (either on a global scale and/or on a per-user level) a continuous value which is used to score/rank its worth as a recommendation.
+
+## 1.1. The Netflix Prize
+In October 2006, Netflix released a dataset containing 100 million anonymous movie ratins and challenged the data mining, machine learning and computer science communities to develop an algorithmic model that could surpass their own recommender system, Cinematch. The challenge was known as [The Netflix Prize](https://en.wikipedia.org/wiki/Netflix_Prize) due to the million dollar grand compensation at play, and the chosen evaluation metric to measure all models' accuracy (and thus determine if a given system had surpassed Cinematch) was the the root mean squared error (RMSE), which will be properly detailed later on in the [evaluation metrics chapter](#evaluation-metrics) of this document.<br>
+
+Netflix provided both a training and a testing set to develop the models with, the winning condition being to improve upon the RMSE of Cinematch by a 10% margin. Since Cinematch achieved an RSME of 0.9525 (on the testing set) the winning value would need to be lower than 0.85725, which was not achieved until 2009 (three years after the challenge began) with a matrix factorization model. Whereas Cinematch used was built upon a linear model (albeit highly tweaked and conditioned), the Netflix Prize competition demonstrated that matrix factorization approaches surpass classic nearest-neighbor techniques for product recommender systems.<br>
+
+This document details the data processes involved in the construction of such systems: data import, exploration, visualization and the subsequent model development. Given that Cinematch was built upon the linear model concept, a linear model is to be built (with movie and user bias taken into account). However, the final goal of this project is to construct a recommendation system based upon matrix factorization, contrasting its performance to that of a linear model while aiming to surpass the RMSE of Cinematch.
+
+<br>
+
+\newpage
+# 2. Setup and exploration
+
+## 2.1. Project libraries
+As previously stated, this project uses [the R programming language](https://en.wikipedia.org/wiki/R_(programming_language)) along with several libraries which, as is the norm in most non-basic R projects, are often required to complement R with additional (and specific) functions. The following code snippet installs all of the required libraries if they are not installed already (through the use of conditionals and the built-in [<code>require()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/library) function), which are presented in alphabetical order for the sake of convenience (note that the installation itself is called by the [<code>install.packages()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/install.packages) function).
+
+```{r libraries_install}
+# Installing the required libraries (if they are not installed already)
+if(!require(caret)) {
+  install.packages("caret")
+}
+if(!require(cowplot)) {
+  install.packages("cowplot")
+}
+if(!require(data.table)) {
+  install.packages("data.table")
+}
+if(!require(dplyr)) {
+  install.packages("dplyr")
+}
+if(!require(ggplot2)) {
+  install.packages("ggplot2")
+}
+if(!require(ggthemes)) {
+  install.packages("ggthemes")
+}
+if(!require(lubridate)) {
+  install.packages("lubridate")
+}
+if(!require(Metrics)) {
+  install.packages("Metrics")
+}
+if(!require(recosystem)) {
+  install.packages("recosystem")
+}
+if(!require(scales)) {
+  install.packages("scales")
+}
+if(!require(stringr)) {
+  install.packages("stringr")
+}
+if(!require(tibble)) {
+  install.packages("tibble")
+}
+if(!require(tidyr)) {
+  install.packages("tidyr")
+}
+```
+
+Installing a given package does not mean said package (and its associated functions) are yet ready to be used. To do so, it needs to be properly loaded into the R workspace, for which there exists the built-in [<code>library()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/library) function. 
+
+\newpage
+The following code snippet makes use of said function to import/load all of the project's required libraries (once again, in alphabetical order for the sake of convenience).
+
+```{r libraries_load}
+# Loading the required libraries
+library(caret)
+library(cowplot)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(lubridate)
+library(Metrics)
+library(recosystem)
+library(scales)
+library(stringr)
+library(tibble)
+library(tidyr)
+```
+
+A brief comment about these libraries:
+
+* [<strong>caret</strong>](https://www.rdocumentation.org/packages/caret/): this library's name is short for "Classification And Regression Training", being arguably the most popular R package for the matter. It contains a variety of tools to streamline machine learning tasks, and as such many of the functions used throughout this document are from within this package.
+
+* [<strong>cowplot</strong>](https://www.rdocumentation.org/packages/cowplot/): this library eases the construction of publication-quality figures.
+
+* [<strong>data.table</strong>](https://www.rdocumentation.org/packages/data.table/): a high-performance library to work, manipulate and operate with dataframes.
+
+* [<strong>dplyr</strong>](https://www.rdocumentation.org/packages/dplyr/): arguably the most popular R package for data manipulation. It provides a consistent set of tools for the matter, enabling data manipulation in an intuitive, user-friendly way. Data analysts typically use dplyr to transform existing datasets into a fitting format (dataframes are usually preferred) for data analysis, data exploration and data visualization tasks.
+
+* [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/): the most popular library for data visualization. It can greatly improve the quality and aesthetics of one's graphics, being not only highly customizable but also remarkably efficient.
+
+* [<strong>ggthemes</strong>](https://www.rdocumentation.org/packages/ggthemes/): [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/) and its official extension support allows developers to easily create their own tools and presets. [<strong>ggthemes</strong>](https://www.rdocumentation.org/packages/ggthemes/) is built upon that support to provide additional themes for [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/)'s graphics.
+
+* [<strong>lubridate</strong>](https://www.rdocumentation.org/packages/lubridate/): a library designed to simplify (and speed-up) time-related tasks and calculations.
+
+* [<strong>Metrics</strong>](https://www.rdocumentation.org/packages/Metrics/): this library is built around [evaluation metrics](#evaluation-metrics), providing functions to simplify their calculation.
+
+* [<strong>recosystem</strong>](https://www.rdocumentation.org/packages/recosystem/): this library is built around matrix factorization, bundling a collection of functions to simplify the process at hand.
+
+* [<strong>scales</strong>](https://www.rdocumentation.org/packages/scales/): this library was included to properly scale some plot's axis to better visualize and understand the data being plotted.
+
+* [<strong>stringr</strong>](https://www.rdocumentation.org/packages/stringr/): this library a set of functions designed to make working with strings as easy as possible.
+
+* [<strong>tibble</strong>](https://www.rdocumentation.org/packages/tibble/): this library re-imagines the dataframe format, tidying it up leading to a cleaner solution.
+
+* [<strong>tidyr</strong>](https://www.rdocumentation.org/packages/tidyr/): this library simplifies the process of tidying data so that it can be easily evaluated/studied and standardizing it in format that most functions accept.</p>
+
+Note that some of these libraries are also included in the [<strong>tidyverse</strong>](https://www.rdocumentation.org/packages/tidyverse/) package. However, I rather understand the use-case scenario of each instead of relying on library bundles.
+
+\newpage
+## 2.2. The MovieLens dataset
+In ideal circumstances, this project would have used the very same dataset used in the Netflix prize. However, its size is way too large and demanding for the circumstances at hand so the exercise that entails this project describes and details the construction of a movie recommender system using [the MovieLens dataset](https://grouplens.org/datasets/movielens/).  
+Said dataset is provided by GroupLens (a research lab within the Univeristy of Minnesota) and holds 27 million ratings applied to 58,000 movies by 280,000 users. Once again, that might be too much to ask of most basic personal computers and would imply seriously long training times, so only a small subset of the whole dataset will be used given the sheer size of the latter (particularly, the exercise makes use of the [10M MovieLens subset](http://grouplens.org/datasets/movielens/10m/)).
+
+The dataset to work upon needs to be downloaded from [its hosting URL](http://files.grouplens.org/datasets/movielens/ml-10m.zip), for which two R built-in functions are to be used: [<code>tempfile()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/tempfile) creates an empty placeholder upon which to load the file's content and, secondly, [<code>download.file()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/download.file) is the one function needed to download the file at hand (loading its content into the aforementioned placeholder).  
+It is worth noting that the downloaded file is compressed and therefore found in ZIP format, otherwise the [<strong>readr</strong>](https://www.rdocumentation.org/packages/readr/) function library could have been used to read and load the dataset's content.
+
+```{r import_data_1}
+# The dataset ZIP file is downloaded
+dl <- tempfile()
+download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+```
+
+* <strong>ratings.dat</strong>: a four column dataset containing:
+
+  * A user ID
+  * A movie ID
+  * The score with which said user rated the movie
+  * A timestamp
+
+* <strong>movies.dat</strong>: a three column dataset containing:
+
+  * A movie ID
+  * The movie title
+  * The movie genres
+
+* <strong>tags.dat</strong>: a tag-related dataset that will not be used for this exercise.
+
+These files are to be worked with individually, just as is showcased in the next code snippet. The data has to be read properly, and there are various functions to perform this loading process like [<code>fread()</code>](https://www.rdocumentation.org/packages/data.table/versions/1.14.2/topics/fread), from the [<strong>data.table</strong>](https://www.rdocumentation.org/packages/data.table/) library, and [<code>str_split_fixed()</code>](https://www.rdocumentation.org/packages/stringr/versions/1.4.0/topics/str_split), from the [<strong>stringr</strong>](https://www.rdocumentation.org/packages/stringr/) library. Each function has its own particular syntax, so informing oneself regarding their behavior, arguments and intricacies is recommended - their related RDocumentation sites (already hyperlinked) are a good starting point.<br>
+
+Both <code>ratings.dat</code> and <code>movies.dat</code> have their column data separated with a <code class = "string">"::"</code> string, which needs to be properly specified in each of these functions. The column names should also be defined to facilitate indexing-related functions.
+
+\newpage
+Both [<code>fread()</code>](https://www.rdocumentation.org/packages/data.table/versions/1.14.2/topics/fread) and [<code>str_split_fixed()</code>](https://www.rdocumentation.org/packages/stringr/versions/1.4.0/topics/str_split) are showcased in the following code snippet, the former with the <code>ratings.dat</code> dataset and the latter with <code>movies.dat</code> (beware the computing time).
+
+```{r import_data_2}
+# The ratings.dat is imported into the workspace
+ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
+                 col.names = c("userId", "movieId", "rating", "timestamp"))
+class(ratings)
+head(ratings)
+
+# The movies.dat is imported into the workspace
+movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
+colnames(movies) <- c("movieId", "title", "genres")
+class(movies)
+head(movies)
+```
+
+The [<code>head()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/head) function outputs the structure of each set and its very first rows, whereas [<code>class()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/class) returns their class. Note that the [<code>fread()</code>](https://www.rdocumentation.org/packages/data.table/versions/1.14.2/topics/fread) function outputs a dataframe whereas [<code>str_split_fixed()</code>](https://www.rdocumentation.org/packages/stringr/versions/1.4.0/topics/str_split) outputs a matrix. Joining them together requires them both to be of equivalent format and, since most of the relevant functions work best (or at all) with dataframes, the <code>movies</code> matrix will be converted to a dataframe using the [<code>as.data.frame()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/as.data.frame) function.<br>
+
+Note that the <code string = "operator">%>%</code> operator corresponds to the pipe expression from the [<strong>dplyr</strong>](https://www.rdocumentation.org/packages/dplyr/) package, which allows functions to be easily chained. In the following code snippet, the pipe operator is used to easily apply the the [<code>mutate()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/mutate) function (from that same [<strong>dplyr</strong>](https://www.rdocumentation.org/packages/dplyr/) package) upon the movies dataframe to properly "label" the columns' content, changing their classes accordingly through the [<code>as.numeric()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/numeric) and [<code>as.character()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/character) functions. Beware that the [<code>mutate()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/mutate) function is usually used to create new columns for a dataframe although, in this case, it is used to overwrite existing columns (using existing columns' names).
+
+\newpage
+```{r import_data_3}
+# The movies object is converted into a dataframe
+movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(movieId),
+                                            title = as.character(title),
+                                            genres = as.character(genres))
+class(movies)
+head(movies)
+```
+
+The [<code>head()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/head) output content is unchanged, but now [<code>class()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/class) showcases that <code>movies</code> has been properly converted into a dataframe. Since both <code>movies</code> and <code>ratings</code> are now equal in format, they can be fused together with the [<code>left_join()</code>](https://www.rdocumentation.org/packages/tidytable/versions/0.7.0/topics/left_join.) function from the [<strong>dplyr</strong>](https://www.rdocumentation.org/packages/dplyr/) package, just as is illustrated in the following code snippet. Note that an array needs to be specified so that the two dataframes can be joined (in this case, they are joined by the <code class = "string">"movieId"</code> column array).
+
+```{r import_data_4}
+# Ratings and movies dataframes are joined by "movieId"
+movielens <- left_join(ratings, movies, by = "movieId")
+class(movielens)
+head(movielens)
+```
+
+The [<code>head()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/head) output showcases the newly constructed dataset' structure and content. Note that this object (<code>movielens</code>) is of class <code>"data.table"</code> and/or <code>"data.frame"</code>, which is ideal (as previously stated) since most of the relevant functions work best (or at all) with dataframes.
+
+\newpage
+## 2.3. Model evaluation
+
+### 2.3.1. The validation set
+To evaluate the system's effectiveness, a validation set is to be built using a small subset of the dataset at hand; it is upon this validation set that the RMSE will be computed. To split the <code>movielens</code> in a working set and the validation one the R built-in functions [<code>nrow()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/nrow) and [<code>sample()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sample) could be used to randomly select row indexes, dividing the dataset based on said indexes. This split is showcased in the following code snippet, where the validation set is built using 10% of the dataset's indexes; the missing 90% is used to create the <code>working_set</code> object, which is the set to work upon and develop the model with.  
+Note that the validation set is referred to as <code>temp</code> at this point since it is missing key steps without which it can be hardly considered a valid validation set. Finally, the [<code>tibble()</code>](https://www.rdocumentation.org/packages/tibble/versions/3.1.6/topics/tibble) function (from the [<strong>tibble</strong>](https://www.rdocumentation.org/packages/tibble/) package) is used to create a table-like structure to showcase the different sets' length.
+
+``` {r validation_split_1}
+# Using built-in R functions to create the working and validation sets
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+validation_index <- sample(1:nrow(movielens), 0.1*nrow(movielens))
+working_set <- movielens[-validation_index,]
+temp <- movielens[validation_index,]
+
+tibble(Dataset = c("movielens", "working_set", "temp"),
+       "Number of ratings" = c(nrow(movielens), nrow(working_set), nrow(temp)))
+```
+
+Despite being perfectly valid, built-in R functions are not the usual/preferred approach for this sort of split. The [<strong>caret</strong>](https://www.rdocumentation.org/packages/caret/) package (short for Classification And Regression Training) contains a variety of tools to streamline many machine learning tasks (it is undoubtedly one of the most popular libraries for the matter) and among its many functions lies [<code>createDataPartition()</code>](https://www.rdocumentation.org/packages/caret/versions/6.0-90/topics/createDataPartition), often used for the train-test split (which will be showcased later on) but equally ideal for the construction of the validation set. This function not only divides a given dataset based on a specified proportion but it does so while keeping the classification ratio constant within each set so that both have the same factor/cluster distribution as the original dataset, avoiding certain unfavorable scenarios where there might not be a sufficient amount of a given factor within the working set to allow the algorithm to develop a fitting model.
+
+``` {r createDataPartition, eval = FALSE}
+# Do not run this code snippet, as it is only here for illustration purposes
+library(caret)
+createDataPartition(
+  y,
+  times = 1,
+  p = 0.5,
+  list = TRUE,
+  groups = min(5, length(y))
+)
+```
+
+\newpage
+The arguments of the function are as follows:
+
+* <strong>y</strong>: a vector of outcomes.
+* <strong>times</strong>: the number of partitions to create.
+* <strong>p</strong>: the percentage of data that goes to training.
+* <strong>list</strong>: whether to hold the results within a list or within a matrix.
+* <strong>groups</strong>: if <code>y</code> (the vector of outcomes) is numerical, then this argument defines the number of breaks in the quantiles.
+
+An important note is that, as opposed to the previous approach, the main argument of the function does not ask for the dataframe itself but uses its vector of outcomes instead (in the case of this exercise, said vector of outcomes is the ratings column/array). More information about the function, its behavior and its arguments can be found in [its associated RDocumentation page](https://www.rdocumentation.org/packages/caret/versions/6.0-90/topics/createDataPartition).<br>
+
+The following code snippet showcases the subset construction using the [<code>createDataPartition()</code>](https://www.rdocumentation.org/packages/caret/versions/6.0-86/topics/createDataPartition) function. Note that, once again, the subsets' balance is of 90% for the working set and 10% for the validation one.
+
+``` {r validation_split_2}
+# Using createDataPartition to create the working and validation sets
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
+working_set <- movielens[-test_index,]
+temp <- movielens[test_index,]
+
+tibble(Dataset = c("movielens", "working_set", "temp"),
+       "Number of ratings" = c(nrow(movielens), nrow(working_set), nrow(temp)))
+```
+
+The [<code>tibble()</code>](https://www.rdocumentation.org/packages/tibble/versions/3.1.6) function is used once again to observe the sets' length. There might be minor differences with respect to the previous values (which used R built-in functions), but such differences are negligible.<br>
+
+Let's now ensure the user IDs and movie IDs in the testing set are also present in the training set. To do so, different versions of the [<code>join()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/join) function (such as the previously used <code>left_join()</code>) are used (in this case, <code>semi_join()</code> and <code>anti_join()</code>). Any and all information regarding these functions can be found in [their associated RDocumentation page](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/join).
+
+``` {r validation_split_3}
+# Make sure userId and movieId in validation set are also in working_set set
+validation <- temp %>% 
+      semi_join(working_set, by = "movieId") %>%
+      semi_join(working_set, by = "userId")
+
+# Add rows removed from validation set back into working_set set
+removed <- anti_join(temp, validation)
+working_set <- rbind(working_set, removed)
+```
+
+These procedures performed upon the <code>temp</code> object have lead to the construction of the <code>validation</code> set, which will be the one used to validate the models' effectiveness once developed. To do so, there are many different metrics (although it has already been stated that the main one to focus on will be the RMSE since such was the metric used for The Netflix Price).
+
+\newpage
+### 2.3.2. Evaluation metrics
+Within any and all machine learning projects, measure the performance of the developed models is of key importance. There are many metrics to quantify the predictions' error, which most of the approaches use to evaluate the model's effectiveness. Such error is usually obtained by comparing the models' predicted values with the actual real/observed results (in this exercise, those have been stored in the <code>validation</code> object previously constructed). Most of these metrics (the most relevant and popular ones) revolve around measuring the distance between both values (the closer the points the higher the success).
+
+#### 2.3.2.1. Mean absolute error
+The Mean Absolute Error (MAE) averages the absolute difference between the model's predicted value and the actual real/observed value. Given the linearity of the metric, all errors are equally weighted (e.g. an error of value 4 is twice as bad as an error with value 2).  
+Its mathematical formula goes as follows:
+
+$$MAE=\frac{1}{N}\sum_{i}^{N}|\hat y_i - y_i|$$
+
+Where $N$ equals the number of observations/ratings, $\hat y_i$ is the predicted value and $y_i$ is the real/observed result.<br>
+
+Computing the mean absolute error in R is a simple task thanks to the [<code>mae()</code>](https://www.rdocumentation.org/packages/Metrics/topics/mae) function from the [<strong>Metrics</strong>](https://www.rdocumentation.org/packages/Metrics/) library, which contrasts actual and predicted values (arguments for the function) through the mathematical expression just showcased in order to evaluate the predicted values' relative success.
+
+#### 2.3.2.2. Mean squared error (MSE)
+The Mean Squared Error (MSE), also known as the Mean Squared Deviation (MSD), averages the squared error of the model's predictions. The squared nature of this metric implies that the further the error lies from 1, the heavier it weights upon the MSE metric.
+
+  * If an error larger than one doubles its value, its MSE multiplies its value times four.
+  * If an error lower than one halves its value, its MSE is divided by four
+
+MSE mathematical formula goes as follows:
+
+$$MSE=\frac{1}{N}\sum_{u,i}^N(\hat{y}_{u,i}-y_{u,i})^2$$
+
+where $N$ equals the number of ratings, $y_{u,i}$ is the rating of movie $i$ by user $u$ and $\hat{y}_{u,i}$ is the prediction of movie $i$ by user $u$.<br>
+
+Computing the mean squared error in R is a simple task thanks to the [<code>mse()</code>](https://www.rdocumentation.org/packages/Metrics/topics/mse) function from the [<strong>Metrics</strong>](https://www.rdocumentation.org/packages/Metrics/) library, which contrasts actual and predicted values (arguments for the function) through the mathematical expression just showcased in order to evaluate the predicted values' relative success.
+
+#### 2.3.2.3. Root mean squared error (RMSE)
+The Root Mean Squared Error (RMSE), also known as the Root Mean Squared Error (RMSD), is the most popular metric to evaluate machine learning models. Concept-wise is similar to the previously discussed Mean Squared Error (MSE) but since RMSD square roots the result, its errors are measured in the same units as the values themselves. 
+
+\newpage
+However, that does not exempt RMSE from its squared nature, meaning that the further the error lies from 1, the heavier it weights upon the RMSE metric:
+
+* If an error larger than one doubles its value, its RMSE multiplies its value times four.
+* If an error lower than one halves its value, its RMSE is divided by four.
+
+RMSE mathematical formula goes as follows:
+
+$$RMSE=\sqrt{\frac{1}{N}\sum_{u,i}^N(\hat{y}_{u,i}-y_{u,i})^2}$$
+
+Where $N$ equals the number of ratings, $y_{u,i}$ is the observed/real rating assigned to a given movie $i$ by a given user $i$ and $\hat{y}_{u,i}$ is the model's predicted rating for that same movie and user.<br>
+
+Computing the root mean squared error in R is a simple task thanks to the [<code>rmse()</code>](https://www.rdocumentation.org/packages/Metrics/topics/rmse) function from the [<strong>Metrics</strong>](https://www.rdocumentation.org/packages/Metrics/) library, which contrasts actual and predicted values (arguments for the function) through the mathematical expression just showcased in order to evaluate the predicted values' relative success.  
+This is the most relevant metric since The Netflix Prize challenge was based on it; the goal of this exercise is to surpass Cinematch RSME value of 0.9525 and getting as close as possible to the winning RSME of 0.85725.
+
+## 2.4. Data exploration
+Understanding the data to work with (its structure, content, rating distribution...) can be key to build a better model. For example, linear models have a tendency to chase outliers in the training data, so observing whether or not there is a significant amount of outliers within said data or if, on the other hand, it follows a somewhat linear/regular pattern. This can help determine the approach to use or, as is the case in this exercise, the validity of the approaches already selected.<br>
+
+The core functions with which to begin the data exploration are the following, some of which have already been used throughout previous chapters:
+
+* [<code>dim()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/dim): this function returns the dimensions of an object. In this exercise, those objects are the sets to work with and the output of the function returns their number of rows and columns (respectively). Note that there exist functions that return the rows and columns individually (<code>nrow()</code> and <code>ncol()</code> respectively).
+
+* [<code>class()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/class): this function returns the class of an object. Has been used to ensure that the sets to work with are of <code>data.frame</code> class.
+
+* [<code>str()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/str): this function returns a summary of a dataset' structure, showcasing each column's class and first items.
+
+* [<code>head()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/head): this function returns the first rows of a dataset, showcasing part of its content as well as its structure.
+
+* [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary): this function returns relevant statistical parameters for all columns of a given dataset. Those parameters are:
+
+    * The minimum and maximum values
+    * The first and third quartiles
+    * The median and the mean.
+
+Given that the <code>working_set</code> subset is the one to be used to construct the model, the following exploration will be performed upon it. The <code>movielens</code> object would also be valid, but it is arguably better to restrict the exploratory analysis to the data with which the model will be built.<br>
+
+Let's first evaluate the dataset's dimensions and class using both [<code>dim()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/dim) and [<code>class()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/class):
+
+``` {r exploration_1}
+dim(working_set)
+class(working_set)
+```
+
+As can be seen, the dataset's dimensions show that the set, of class `r class(working_set)`, is made of `r dim(working_set)[1]` rows and `r dim(working_set)[2]` columns. The class of those columns, as well as their first items and the overall structure of the dataset, can be appreciated through the use of the [<code>str()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/str) function.  
+Note that the argument <code>vec.len = 2</code> is used in order to limit the number of items per column/feature (otherwise the output would be too cluttered).
+
+``` {r exploration_2}
+str(working_set, vec.len = 2)
+```
+
+From the output of the function, it can be seen that:
+
+* The <code>userId</code> column holds the integers used to identify and represent all of the users who have rated a movie.
+
+* The <code>movieId</code> column holds the numeric values, each matching a different movie (the movie title associated with each of these values can be seen in the <code>title</code> column).
+
+* The <code>rating</code> column holds the numeric values associated with the rating with which a given user (the one from that same row) has rated a given movie (the one from that same row). It is based upon a star-based system, meaning that a 5-star rating (<code>5</code> value) is the highest possible outcome, but the first items of the column do not cover the whole rating range/spectrum.
+
+* The <code>timestamp</code> column holds the integer values which, if converted to an easy-to-read date format, should showcase the precise moment when the user of that same row rated the associated movie (as in, the one from that same row).
+
+* The <code>title</code> column holds strings, character based results corresponding to the movie that the user from that same row has rated.
+
+* The <code>genres</code> column holds strings, character based results corresponding to the genre or genres associated with the movie from that same row. Note that a single string is used even when multiple genres are used, with a <code class = string>"|"</code> character separating each genre. That means that finding genres within this column might require the use of functions such as <code>str_detect()</code> from the <strong>stringr</strong> to find patterns within each string (e.g. finding <code class = string>Comedy</code> in the <code class = string>"Comedy|Romance"</code> string).
+
+\newpage
+The function [<code>head()</code>](https://www.rdocumentation.org/packages/utils/versions/3.6.2/topics/head) showcases the very first rows of the dataset "as is", being an accurate visual representation of the item and its content.
+
+``` {r exploration_3}
+head(working_set)
+```
+
+Lastly, the function [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) answers some previous unresolved question: the range/spectrum of the user ratings.
+
+``` {r exploration_4}
+summary(working_set)
+```
+
+Not every column gets meaningful insight from the function's outcome, particularly identification and character based columns. The <code>timestamp</code> column hides its information due to its hard to interpret integer-based format (could mean something once converted to a proper time-based format) but the rating column showcases relevant statistics on the subject. For one, it can be seen that the ratings range/spectrum goes from half a star to the desirable 5-star rating, but some other insights can be observed such as an overall higher rating tendency (either users are more likely to rate movies they like or they like more movies than they do not).  
+This insightful information can be portrayed in an easier-to-read and easier-to-understand format, so the following chapter will revolve around doing so.
+
+\newpage
+### 2.4.1. Ratings
+Visualizing the ratings' distribution can uncover some hidden insights that might help to better understand user behavior. There are multiple ways to properly visualize the data in question, with the most common approaches being the chart-based information table and the graphic plot. The following code snippet showcases the former, counting the occurrences of each rating: the function [<code>group_by()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/group_by) groups the content of the <code>working_set</code> dataframe by <code>rating</code>, and the resulting object is then summarized so that only the rating count remains through the use of the [<code>summarize()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/summarise) and [<code>n()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/n) functions.
+
+``` {r exploration_ratings_1}
+# Rating count
+working_set %>%
+  group_by(rating) %>%
+  summarize(count = n())
+```
+
+It can be easily seen that users are more likely to use rounded ratings than half-stared ones. There is also an upwards trend that is a bit harder to appreciate with the chart (although the presence of six-number figures in the latter half of the table definitely indicates so), so plotting the information might help to evaluate how the ratings are distributed throughout the rating range/spectrum.<br>
+
+Plotting graphs in R is feasable with built-in tools/libraries, however the recommended approach usually requires the use of the [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) function from the [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5) package due to its versatile controls and potential tweaks. Another library which greatly complements the former is [<strong>ggthemes</strong>](https://www.rdocumentation.org/packages/ggthemes), which includes some visually noteworthy themes to use alongside [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot). Note that the [<strong>tidyverse</strong>](https://www.rdocumentation.org/packages/tidyverse) package includes the [<strong>dplyr</strong>](https://www.rdocumentation.org/packages/dplyr) library as well as both [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5) and [<strong>ggthemes</strong>](https://www.rdocumentation.org/packages/ggthemes/versions/3.5.0), so it is perfectly possible to just import said package into the workspace for every function to work as intended.
+
+``` {r exploration_ratings_2}
+# Rating distribution plot
+working_set %>%
+  group_by(rating) %>%
+  summarize(count = n()) %>%
+  ggplot(aes(x = rating, y = count)) +
+  geom_bar(stat = "identity", fill = "#8888ff") +
+  ggtitle("Rating Distribution") +
+  xlab("Rating") +
+  ylab("Occurrences Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+<br>
+
+The graph confirms what was previously observed: rounded ratings occur more often than half-stared ones. The upwards trend previously discussed is now perfectly clear, although it seems to top right between the 3 and 4 star ratings lowering the occurrences count afterwards. That might be due to users being more hesitant to rate with the highest mark for whichever reasons they might hold.
+
+### 2.4.2. Timestamps
+As previously stated when analyzing the output of the [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) function, the statistical values it returned might hold some (somewhat) meaningful insight. To properly observe and discuss those results, the timestamps held by the dataset have to be translated into a more understandable format. R provides the built-in function [<code>as.Date()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/as.Date) for similar purposes, but such function is unable to properly interpret a date from an integer (even if an origin is fed). As was the case with [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot), there exists a library built specifically for this tasks and purposes: [<strong>lubridate</strong>](https://www.rdocumentation.org/packages/lubridate/versions/1.8.0) was and is designed to simplify time-related tasks and calculations. [Its associated RDocumentation page](https://www.rdocumentation.org/packages/lubridate/) showcases most (if not all) of its functions but, among them, the most relevant one for this exercise is [<code>as_datetime()</code>](https://www.rdocumentation.org/packages/lubridate/versions/1.8.0/topics/as_date) as it properly transforms the integer values from the working dataset to objects of class <code class = "string">"Date"</code>.
+
+[The README file provided with the dataset](https://files.grouplens.org/datasets/movielens/ml-10m-README.html) describes and details the different variables/parameters that construct the set itself, the timestamp among them. As stated in said file, the dataset's timestamps represent seconds since midnight Coordinated Universal Time (UTC) of January 1, 1970; feeding the [<code>as_datetime()</code>](https://www.rdocumentation.org/packages/lubridate/versions/1.8.0/topics/as_date) function with that information (through the non-optional <code>origin</code> argument) properly converts the timestamp array to the proper format. 
+
+\newpage
+The following code snippet uses the [<code>sample()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sample) function to showcase a selection of dates with the corrected format (after the use of the [<code>as_datetime()</code>](https://www.rdocumentation.org/packages/lubridate/versions/1.8.0/topics/as_date) function).
+
+``` {r exploration_timestamp_1}
+# as_datetime() showcase
+sample(as_datetime(working_set$timestamp, origin = "1970-01-01"), replace = TRUE, size = 20)
+```
+
+This array can be used to discern the number of ratings through time, which might indicate the growth of the platform or any given tendency in such regard. Doing so is possible with either a chart or with the use of a graphic plot, as was previously the case with the dataset ratings. Note that (in both cases) the dates are simplified to their year for convenience reasons (otherwise there would be too many information breaks), something easily achievable through the use of the [<code>year()</code>](https://www.rdocumentation.org/packages/lubridate/versions/1.8.0/topics/year) function.
+
+``` {r exploration_timestamp_2}
+# Yearly rating count
+working_set %>% 
+  mutate(year = year(as_datetime(timestamp, origin = "1970-01-01"))) %>%
+  group_by(year) %>%
+  summarize(count = n())
+```
+
+The results evidentiate that this subset of the MovieLens dataset holds no information prior to 1995 nor there is any rating post 2009. Despite being able to do so with this chart, finding relevant trends or patters is easier with a plot, for which the [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) function is once again appreciated.
+
+\newpage
+``` {r exploration_timestamp_3}
+# Ratings per year plot
+working_set %>% 
+  mutate(year = year(as_datetime(timestamp, origin = "1970-01-01"))) %>%
+  ggplot(aes(x = year)) +
+  geom_bar(fill = "#8888ff") + 
+  ggtitle("Ratings per year") +
+  xlab("Year") +
+  ylab("Number of ratings") +
+  scale_y_continuous(labels = comma) + 
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+<br>
+
+The plot suggests that from 1996 to 1998 the platform seemed to be declining in popularity, but 1999 broke that trend followed up by a notable popularity spike (of almost 1.2 million ratings) circa 2000. From that point on, the popularity of the platform appears to be somewhat stable with around 600.000 ratings per year (albeit a second notable spike in 2005 which surpassed the million ratings mark).<br>
+
+The dataset's timestamps have been used to determine the number of ratings per year, but they can also be used to uncover any potential trend in the rating scores (e.g. users might be more likely to rate movies higher in recent times than they were in the past). 
+
+\newpage
+To properly evaluate that information, an additional graph is to be plotted.
+``` {r exploration_timestamp_4}
+# Average rating per year plot
+working_set %>% 
+  mutate(year = year(as_datetime(timestamp, origin = "1970-01-01"))) %>%
+  group_by(year) %>%
+  summarize(avg = mean(rating)) %>%
+  ggplot(aes(x = year, y = avg)) +
+  geom_bar(stat = "identity", fill = "#8888ff") + 
+  ggtitle("Average rating per year") +
+  xlab("Year") +
+  ylab("Average rating") +
+  scale_y_continuous(labels = comma) + 
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+<br>
+
+Despite it being an informative plot, there is no particular insight to highlight other than the almost-negligible effect of time in the users' ratings.
+
+\newpage
+### 2.4.3. Ratings per movie
+Not all movies are rated equal and, as is to be expected, not all of them are equally popular. That is to mean that some movies have more ratings than others due to their overall popularity, maybe due to its critics' acclaim or perhaps just due to them being blockbusters. That distribution can be studied through either a table or a plot in order to observe any potential trends.
+
+``` {r exploration_movies_1}
+# Movie popularity count
+working_set %>% 
+  group_by(movieId) %>% 
+  summarize(count = n()) %>%
+  slice_head(n = 10)
+```
+
+At first glance, the information chart shown above does not convey much. Not only is said chart extremely large (`r dim(working_set %>% group_by(movieId) %>% summarize(count = n()))[1]` rows, hence the use of the [<code>slice_head()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/slice) function to reduce the output's length) but there is also much diversity in the <code>count</code> values so, to clear things out, the previously detailed [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) function can be used to observe the most meaningful statistical measures.
+
+``` {r exploration_movies_2}
+# Movie popularity summary
+summary(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count))
+```
+
+The minimum value of `r min(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count))` is understandable, since there might exist some obscure movies that almost no one has watched, but it is worth noting that the most popular movie in the dataset has been rated `r max(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count))` times. This latter value seems to be quite an outlier, given the output returned by the <code>summary()</code> function within the previous code snippet where the highlight is arguably the third quartile value since it clearly showcases that 75% of the movies have been rated less than `quantile(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count), probs = 0.75, na.rm = TRUE)` times. With all of these values, it is somewhat feasible to evaluate a given movie's popularity (with respect to the rest of the movies of the dataset) based on its rating count.<br>
+
+To further study these results and uncover any potential hidden insight, a graphic plot is highly recommended (and almost mandatory). As was the case in previous chapters, [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions are the ideal tools to do so.
+
+``` {r exploration_movies_3}
+# Ratings per movie plot
+working_set %>%
+  group_by(movieId) %>%
+  summarize(count = n()) %>%
+  ggplot(aes(x = movieId, y = count)) +
+  geom_point(alpha = 0.2, color = "#4020dd") +
+  geom_smooth(color = "red") +
+  ggtitle("Ratings per movie") +
+  xlab("Movies") +
+  ylab("Number of ratings") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+<br>
+
+The plot clearly shows that there is a significant gap in movie identification numbers between the 10000 and 25000 marks, although that might be the least meaningful insight to take from the plot. Movie popularity is now visually observable, proving that most of the points/movies have few ratings (the [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) output indicated that most movies have been rated less than `quantile(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count), probs = 0.75, na.rm = TRUE)` times) and, as a matter of fact, older movies in the dataset (first entries, identifiable by their low <code>movieId</code> number) have been rated more times than recent flicks (which makes sense give that users have had more time to rate said films).<br>
+
+\newpage
+A smooth density line/curve has been plotted since scatterplots can be misleading if the number of points (users in this case) is on the larger side since the points often overlap each other making it impossible to determine the denser regions of the plot, which fortunately are clearly highlighted by smooth density lines/curves. However, said information is better showcased with a histogram (for which the function [<code>geom_histogram()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/0.9.0/topics/geom_histogram) from the [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5) package is ideal.
+
+``` {r exploration_movies_4}
+# Movies' rating histogram
+working_set %>%
+  group_by(movieId) %>%
+  summarize(count = n()) %>%
+  ggplot(aes(x = count)) +
+  geom_histogram(fill = "#8888ff", color = "#4020dd") +
+  ggtitle("Movies' rating histogram") +
+  xlab("Rating count") +
+  ylab("Number of movies") +
+  scale_y_continuous(labels = comma) +
+  scale_x_log10(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+<br>
+
+This histogram better conveys the information provided by the [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) function, where the quantiles' values state that half the movies are rated between `r quantile(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count), probs = 0.25, na.rm = TRUE)` and `r quantile(working_set %>% group_by(movieId) %>% summarize(count = n()) %>% select(count), probs = 0.75, na.rm = TRUE)` times.<br>
+
+### 2.4.4. Ratings per user
+As was and is the case with movies, not all users see the same amount of activity within the platform: the most active users might have rated a significant portion of the dataset's filmography whereas the least active users might have rated his/her favorite movie and no more. To evaluate this information, let's mimic the previous chapter approach.
+
+``` {r exploration_users_1}
+# User rating count (activity measure)
+working_set %>% 
+  group_by(userId) %>% 
+  summarize(count = n()) %>%
+  slice_head(n = 10)
+```
+
+Once again, the table is extremely large (`r dim(working_set %>% group_by(userId) %>% summarize(count = n()))[1]` rows, hence the use of the [<code>slice_head()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/slice) function to reduce the output's length) and does not convey much by itself; the function [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) provides the statistical measures needed to properly interpret it.
+
+``` {r exploration_users_2}
+# User rating summary
+summary(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count))
+```
+
+The minimum value of `r min(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count))` is higher than I personally expected, since all users have at least rated as many movies (goes a bit beyond rating your favorite flick). The most active user in the dataset has rated `r max(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count))` movies, although once again that seems to be quite an outlier: the rest of the values returned by the function showcase so (particularly the third quartile, which indicates that 75% of the users have rated less than `quantile(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count), probs = 0.75, na.rm = TRUE)` movies. These values can be used to evaluate the activity of an user, which might be a valuable indicator for a platform.<br>
+
+To further study these results and uncover any potential hidden insight, a plot is highly recommended (and almost mandatory). As was the case in previous chapters, [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions are the ideal tools to do so.
+
+``` {r exploration_users_3}
+# Ratings per user plot
+working_set %>%
+  group_by(userId) %>%
+  summarize(count = n()) %>%
+  ggplot(aes(x = userId, y = count)) +
+  geom_point(alpha = 0.2, color = "#4020dd") +
+  geom_smooth(color = "red") +
+  ggtitle("Ratings per user") +
+  xlab("Users") +
+  ylab("Number of ratings") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+<br>
+
+Once again, both a scatterplot and a smooth density line/curve have been drawn altogether to avoid misinterpretations. Judging by the scatterplot and given the sheer amount of users (which makes their points overlap), the plot seems to indicate that the average number of movies being rated by each user to be around the 500-1000 mark despite the fact that most users have rated less than `quantile(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count), probs = 0.75, na.rm = TRUE)` movies (the data's third quartile). That is why the smooth density line/curve is mandatory: it clearly showcases the trend, which is to rate around `r mean(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count))` movies.<br>
+
+\newpage
+Note that there is not any significant difference between older users and recent users (assumming longevity based on their <code>userId</code>) since both the scatterplot and the smooth density line stay relatively constant. It is also worth noting that this plot's outliers are more of an anomaly than the "Rations per movie" outliers, although that is but a minor insight of no consequence.<br>
+
+Mimicking the movies exploration, an histogram of the users and their rating count could provide some relevant information or better convey some of the discussed observations. For such plot, function [<code>geom_histogram()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/0.9.0/topics/geom_histogram) from the [<strong>ggplot2</strong>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5) package is an ideal tool.
+
+``` {r exploration_users_4}
+# Users' rating histogram
+working_set %>%
+  group_by(userId) %>%
+  summarize(count = n()) %>%
+  ggplot(aes(x = count)) +
+  geom_histogram(fill = "#8888ff", color = "#4020dd") +
+  ggtitle("Users' rating histogram") +
+  xlab("Rating count") +
+  ylab("Number of users") +
+  scale_y_continuous(labels = comma) +
+  scale_x_log10(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+This histogram better conveys the information provided by the [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) function, where the quartiles' value state that half of the userbase rate between `r quantile(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count), probs = 0.25, na.rm = TRUE)` and `r quantile(working_set %>% group_by(userId) %>% summarize(count = n()) %>% select(count), probs = 0.75, na.rm = TRUE)` movies.<br>
+
+Lastly, it is highly recommended to plot a matrix of users and movies where the matrix cells are highlighted if the corresponding user has rated the corresponding film (serving as a heatmap of sorts). This plot could also provide some relevant insights: for one, it would make it easier to observe the scarcity of ratings in the dataset, but it would also showcase which movies are more popular, which users are more active (although similar information can be subtracted from previous plots) as well as the overall activity of the platform. However, the sheer amount of both users and movies would make such graph too large for this document, so it would be wise to limit both movies and users to a manageable quantity (both the [<code>sample()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sample) and the [<code>select()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/select) functions accept a size-based argument, which can be used lo limit the variables at play).  
+Note that [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) is not used for this graph since the [<code>image()</code>](https://www.rdocumentation.org/packages/graphics/versions/3.6.2/topics/image) function is specifically design for these plots.
+
+``` {r exploration_users_5, results='hide', fig.show='show'}
+# User x Movie matrix construction
+limit <- 60
+user_movie_matrix <- working_set %>% 
+  filter(userId %in% sample(unique(working_set$userId), limit)) %>%
+  select(userId, movieId, rating) %>%
+  mutate(rating = 1) %>%
+  spread(movieId, rating) %>% 
+  select(sample(ncol(.), limit)) %>% 
+  as.matrix() %>% 
+  t(.) # This function transposes the matrix
+
+# Matrix plot
+user_movie_matrix %>% 
+  image(1:limit, 1:limit,., xlab = "Movies", ylab = "Users") +
+  abline(h = 0:limit + 0.5, v = 0:limit + 0.5, col = "grey") +
+  title(main = list("User x Movie matrix", cex = 1, font = 2))
+```
+
+\newpage
+This graph visually showcases the most popular movies and the most active users within the selected subset (the most popular movies would be those with more highlighted cells in their respective column, and the most active users would be those with more highlighted cells in their respective rows). The density of highlighted cells could serve as an indicator of the platforms' overall activity but, unfortunately, the shown grid only covers a small portion of the dataset and any apparent insight could be misleading.
+
+### 2.4.5. Genres
+As previously stated, the <code>genres</code> column holds strings, character based results corresponding to the genre or genres associated with the movie from that same row. Note that a single string is used even when multiple genres are used, with a <code class = string>"|"</code> character separating each genre. The following code snippet showcases the genres' 
+
+``` {r exploration_genres_1}
+# Genres count
+working_set %>% 
+  group_by(genres) %>% 
+  summarize(count = n()) %>%
+  slice_head(n = 8)
+```
+
+Setting aside the sheer amount of genres (`r dim(working_set %>% group_by(genres) %>% summarize(count = n()))[1]`), the previous code snippet illustrates the biggest problem at hand: having multiple genres in a simple string means that finding genres within this particular column requires the use of functions such as [<code>str_detect()</code>](https://www.rdocumentation.org/packages/stringr/versions/1.4.0/topics/str_detect) from the [<strong>stringr</strong>](https://www.rdocumentation.org/packages/stringr/versions/1.4.0) package to find character patterns within each string (e.g. finding <code class = string>Comedy</code> in the <code class = string>"Comedy|Romance"</code> string). To understand the individual genres found within the dataset note that they are documented in [its associated README file](https://files.grouplens.org/datasets/movielens/ml-10m-README.html), being the following:
+
+* Action
+* Adventure
+* Animation
+* Children
+* Comedy
+* Crime
+* Documentary
+* Drama
+* Fantasy
+* Film-Noir
+* Horror
+* Musical
+* Mystery
+* Romance
+* Sci-Fi
+* Thriller
+* War
+* Western
+
+\newpage
+Note that the previous code snippet's output showcases the <code class = "string">"IMAX"</code> genre although there is no mention of it in the dataset's README (although technically speaking IMAX should be more of a tag than a genre).<br>
+
+The [<code>str_detect()</code>](https://www.rdocumentation.org/packages/stringr/versions/1.4.0/topics/str_detect) function can be used alongside the [<code>sum()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sum) to iterate through a vector of strings where the different genres have been defined and count each genre's ratings. The following code snippet does precisely so, using [<code>sapply()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lapply) to apply the summation function to each individual element of the genres' vector (beware the computing time).
+
+``` {r exploration_genres_2}
+# Individual genres count
+genres <- c("Action", "Adventure", "Animation", 
+            "Children", "Comedy", "Crime", 
+            "Documentary", "Drama", "Fantasy", 
+            "Film-Noir", "Horror", "Musical", 
+            "Mystery", "Romance", "Sci-Fi", 
+            "Thriller", "War", "Western")
+
+genres_df <- data.frame(
+  Genres = genres,
+  Count = sapply(genres, function(x) {
+    sum(str_detect(working_set$genres, x))
+  })
+)
+
+print(genres_df)
+```
+
+The resulting dataset showcases the popularity of the different genres. To better visualize this information, there is no better tool than [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions. 
+
+\newpage
+``` {r exploration_genres_3}
+# Genre popularity plot
+genres_df %>%
+  ggplot(aes(x = Count, y = Genres)) +
+  ggtitle("Genre Popularity") +
+  geom_bar(stat = "identity", width = 0.6, fill = "#8888ff") +
+  xlab("Number of ratings") +
+  ylab("Genres") +
+  scale_x_continuous(labels = comma) +
+  theme_economist() +
+  theme(plot.title = element_text(vjust = 3.5),
+        axis.title.x = element_text(vjust = -5, face = "bold"),
+        axis.title.y = element_text(vjust = 10, face = "bold"),
+        axis.text.x = element_text(vjust = 1, hjust = 1, angle = 0),
+        axis.text.y = element_text(vjust = 0.25, hjust = 1, size = 12),
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+<br>
+
+The plot clearly showcases the most popular genres in a visually appealing format, where the higher count is achieved by dramatic movies followed up by comedic, action-based and thriller flicks.<br>
+
+However, a genre's popularity is not necessarily correlated with its overall rating. To observe that, the previous approach can be somewhat replicated albeit modifying the constructed dataframe to reflect the average rating of a genre (based on each rating placed upon a movie of such kind) instead of merely counting occurrences.
+
+\newpage
+``` {r exploration_genres_4}
+# Average rating for each genre
+genres_df_2 <- data.frame(
+  Genres = genres,
+  Rating = sapply(genres, function(x) {
+    mean(working_set[str_detect(working_set$genres, x)]$rating)
+  })
+)
+print(genres_df_2)
+```
+
+The printed results are surprisingly close to each other. To examine them further, the already detailed [<code>summary()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary) function provides a straightforward solution.
+
+``` {r exploration_genres_5}
+# Genre rating summary
+summary(genres_df_2)
+```
+
+The maximum score is obtained by the `r genres_df_2$Genres[which(genres_df_2$Rating == max(genres_df_2$Rating))]` genre whereas the lowest score is obtained by the `r genres_df_2$Genres[which(genres_df_2$Rating == min(genres_df_2$Rating))]` genre, but there is not much difference between these values (`r round(max(genres_df_2$Rating), 4)` and `r round(min(genres_df_2$Rating), 4)` respectively) nor are they far from the overall average rating of `r round(mean(working_set$rating), 4)`.  
+However, it is worth noting that the best rated genre (`r genres_df_2$Genres[which(genres_df_2$Rating == max(genres_df_2$Rating))]`) deviates from the average rating more than the lowest rated genre (`r genres_df_2$Genres[which(genres_df_2$Rating == min(genres_df_2$Rating))]`) does, and it does so by a significant margin (it is `r round(abs((max(genres_df_2$Rating) - mean(working_set$rating))/(min(genres_df_2$Rating) - mean(working_set$rating))), 2)` times farther). That means that the best rated genre (`r genres_df_2$Genres[which(genres_df_2$Rating == max(genres_df_2$Rating))]`) is more of an outlier than the lowest rated one, which is somewhat more of a merit.
+
+\newpage
+Let's evaluate these results graphically through [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions.
+
+``` {r exploration_genres_6}
+# Genre rating plot
+genres_df_2 %>%
+  ggplot(aes(x = Rating, y = Genres)) +
+  ggtitle("Genre Average Rating") +
+  geom_bar(stat = "identity", width = 0.6, fill = "#8888ff") +
+  xlab("Average ratings") +
+  ylab("Genres") +
+  scale_x_continuous(labels = comma, limits = c(0.0, 5.0)) +
+  theme_economist() +
+  theme(plot.title = element_text(vjust = 3.5),
+        axis.title.x = element_text(vjust = -5, face = "bold"),
+        axis.title.y = element_text(vjust = 10, face = "bold"),
+        axis.text.x = element_text(vjust = 1, hjust = 1, angle = 0),
+        axis.text.y = element_text(vjust = 0.25, hjust = 1, size = 12),
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+\newpage
+### 2.4.6. Preliminar Questions
+Let's answer a few questions about the data to better understand its structure and content before proceeding with the system modelling.<br>
+
+<li class = "faq">How many rows and columns are there in the training dataset?</li>
+``` {r preliminar_questions_1}
+dim(working_set)[1] # Rows
+dim(working_set)[2] # Columns
+```
+
+<li class = "faq">How many zeros were given as ratings in the training dataset?</li>
+``` {r preliminar_questions_2}
+sum(working_set$rating == 0.0)
+```
+
+<li class = "faq">How many threes were given as ratings in the training dataset?</li>
+``` {r preliminar_questions_3}
+sum(working_set$rating == 3.0)
+```
+
+<li class = "faq">How many different movies are in the training dataset?</li>
+``` {r preliminar_questions_4}
+dim(as.data.frame(table(working_set$movieId)))[1]
+```
+
+<li class = "faq">How many different users are in the training dataset?</li>
+``` {r preliminar_questions_5}
+dim(as.data.frame(table(working_set$userId)))[1]
+```
+
+<li class = "faq">How many movie ratings belong to the drama, comedy, thriller and romance genres (respectively) in the working_set dataset?</li>
+``` {r preliminar_questions_6}
+genres_quiz <- c("Drama", "Comedy", "Thriller", "Romance")
+sapply(genres_quiz, function(x) {
+  sum(str_detect(working_set$genres, x))
+})
+```
+
+\newpage
+<li class = "faq">Which of the following movies ("Forrest Gump", "Jurassic Park", "Pulp Fiction", "Shawshank Redemption" and "Speed 2: Cruise Control") has the greatest number of ratings?</li>
+``` {r preliminar_questions_7}
+ratings_quiz = c("Forrest Gump", 
+                 "Jurassic Park \\(1993", 
+                 "Pulp Fiction", 
+                 "Shawshank Redemption", 
+                 "Speed 2: Cruise Control")
+sapply(ratings_quiz, function(x) {
+  sum(str_detect(working_set$title, x))
+})
+```
+
+<li class = "faq">What are the five most given ratings in order from most to least?</li>
+``` {r preliminar_questions_8}
+as.data.frame(table(working_set$rating)) %>% arrange(desc(Freq))
+```
+
+<br>
+
+\newpage
+# 3. System modelling
+
+## 3.1. Train-test split
+Machine learning's first step usual involves splitting the working set (in this exercise, that would be <code>working_set</code>) in a training set (which will be used to train the machine learning model so that it can learn from the supplied data in order to make successful predictions) and a testing set (which will be used to contrast the prediction with testing values and assess their success). Note that although similar concept-wise, the testing set is not the same as the validation set, and it is upon this latter one that the RMSE will be computed.<br>
+
+As was the case with the construction of said validation set, the train-test split can be achieved using the R built-in functions [<code>nrow()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/nrow) and [<code>sample()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sample) to randomly select row indexes from within the dataset and thus create both sets pseudo-randomly. These functions and the aforementioned subsets are showcased in the following code snippet, where two approaches are showcased: the first one uses a training index and the latter uses a testing index instead. Note that both approaches divide the <code>working_set</code> object with a balance of 90% for the training set and 10% for the testing one.
+
+``` {r train_test_1}
+# Train-test split using R built-in functions
+
+# Approach 1: training index
+
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+train_index <- sample(1:nrow(movielens), 0.9*nrow(movielens))
+train_set <- movielens[train_index,]
+temp_test_set <- movielens[-train_index,]
+
+tibble(Dataset = c("movielens", "train_set", "temp_test_set"),
+       "Number of ratings" = c(nrow(movielens), nrow(train_set), nrow(temp_test_set)))
+
+# Approach 2: testing index
+
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+test_index <- sample(1:nrow(movielens), 0.1*nrow(movielens))
+train_set <- movielens[-test_index,]
+temp_test_set <- movielens[test_index,]
+
+tibble(Dataset = c("movielens", "train_set", "temp_test_set"),
+       "Number of ratings" = c(nrow(movielens), nrow(train_set), nrow(temp_test_set)))
+```
+
+There might be minor differences in the arrays' length due to the small differences in the approaches, but in practice both would work identically. However, as was the case with the validation set previously constructed, built-in R functions are not the usual/preferred approach: the [<code>createDataPartition()</code>](https://www.rdocumentation.org/packages/caret/versions/6.0-86/topics/createDataPartition) not only splits the working dataset into the training and testing subsets but it does so while keeping the classification ratio constant within each set so that both have the same factor/cluster distribution as the original dataset, avoiding certain unfavorable scenarios where there might not be a sufficient amount of a given factor within the training set to allow the algorithm to develop a fitting model.<br>
+
+Note that, as opposed to the previous approach, the main argument of the function does not ask for the dataframe itself but uses its vector of outcomes instead (in the case of this exercise, said vector of outcomes is the ratings column/array). The following code snippet showcases the subset construction using the [<code>createDataPartition()</code>](https://www.rdocumentation.org/packages/caret/versions/6.0-86/topics/createDataPartition) function with two different approaches: one using a training index and another using a testing index (the subsets' balance is unchanged, being 90% for the training set and 10% for the testing one).
+
+``` {r train_test_2}
+# Train-test split using createDataPartition
+
+# Approach 1: training index
+
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+train_index <- createDataPartition(movielens$rating, times = 1, p = 0.9, list = FALSE)
+train_set <- movielens[train_index,]
+temp_test_set <- movielens[-train_index,]
+
+tibble(Dataset = c("movielens", "train_set", "temp_test_set"),
+       "Number of ratings" = c(nrow(movielens), nrow(train_set), nrow(temp_test_set)))
+
+# Approach 2: testing index
+
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
+train_set <- movielens[-test_index,]
+temp_test_set <- movielens[test_index,]
+
+tibble(Dataset = c("movielens", "train_set", "temp_test_set"),
+       "Number of ratings" = c(nrow(movielens), nrow(train_set), nrow(temp_test_set)))
+```
+
+\newpage
+Let's work upon the second approach and ensure the user IDs and movie IDs in the testing set are also present in the training set:
+
+``` {r train_test_3}
+# Make sure userId and movieId in the testing set are also in the training set set
+test_set <- temp_test_set %>% 
+      semi_join(train_set, by = "movieId") %>%
+      semi_join(train_set, by = "userId")
+
+# Add rows removed from the testing set back into the training set set
+removed <- anti_join(temp_test_set, test_set)
+train_set <- rbind(train_set, removed)
+```
+
+With the training and testing sets prepared, the following chapters will focus on the modelling itself.
+
+## 3.2. Random guessing
+Random guessing is never an acceptable solution, although it can be used as a baseline of sorts to compare the accuracy and success of other approaches. To simulate a random guessing approach, a vector of all possible ratings is created (using the [<code>seq()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/seq) function) which will be referred to as <code>rating_range</code>. The goal is to use that array to evaluate ratings' distribution and, in order to do that, a custom function is required: the following code snippet refers to it as <code>guess_right()</code>, and it accepts an array and a value as arguments to compute the ratio of items in the array being equal to the input value.<br>
+
+Theory implies that running an infinite amount of random guesses would result in a normal distribution of them. Running an infinite loop is obvious non-possible, but a Monte Carlo simulation of the with a large number would somewhat mimic that distribution. To do so, the following code snippet makes use of the [<code>replicate()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/replicate) function alongside the [<code>sample()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sample) function to randomly pick 1000 items from the <code>train_set$rating</code> vector across 10000 Monte Carlo simulations.  
+Each simulation creates an array of length 1000, which is then passed onto the [<code>sapply()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lapply) function as <code>sapply(rating_range, guess_right, i)</code> (<code>i</code> being the array at hand). With those arguments, [<code>sapply()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lapply) runs the previously created <code>guess_right()</code> function with the <code>i</code> array and the first item in the <code>rating_range</code> as arguments. That done, [<code>sapply()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lapply) will repeat this process with the second item of the <code>rating_range</code> array, and so on. The result will be a vector of 10 distributions, one for each of the elements in the <code>rating_range</code> array (its distribution nature means that the sum of all these values would be equal to the unit).<br>
+
+The Monte Carlo simulation yields an object of dimension 10x10000 since 10000 iterations, each obtaining a length 10 array, can be represented as a matrix of 10000 columns and 10 rows. This matrix is then used in a <code>for</code> loop to evaluate the probability of each possible rating (through averages), yielding once again an array of length 10 (its distribution nature means that the sum of all these values would be equal to the unit) which the following code snippet refers to as <code>guess_prob</code>.<br>
+
+The prediction array would randomly pick ratings based on the probability distributions stored within the <code>guess_prob()</code> array. To do so, it uses the [<code>sample()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/sample) function with the argument <code>prob = guess_prob</code>, randomly choosing ratings from the <code>rating_range</code> array until a vector of length `r size = nrow(validation)` (the number of rows in the validation set) is created (the argument <code>size = nrow(validation)</code> achieves that).<br>
+
+The following code snippet showcases all of this processes:
+
+``` {r random_guessing_1}
+# Random guessing model and predictions
+rating_range <- seq(0.5, 5, 0.5)
+guess_right <- function(x, y) {
+  mean(y == x)
+}
+
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+simulation <- replicate(10000, {
+  i <- sample(train_set$rating, 1000, replace = TRUE)
+  sapply(rating_range, guess_right, i)
+})
+
+guess_prob <- c()
+for(i in 1:nrow(simulation)) {
+  guess_prob <- append(guess_prob, mean(simulation[i,]))
+}
+
+y_hat_random <- sample(rating_range, 
+                       size = nrow(validation), 
+                       replace = TRUE, 
+                       prob = guess_prob)
+```
+
+With the vector of predictions $\hat y$ already prepared, the next step is to evaluate its performance through the metrics already detailed in the [evaluation metrics chapter](#evaluation-metrics). Note that the most relevant metric for this exercise is the RMSE and that Cinematch achieved an RSME value of 0.9525 (upon the testing set) whereas the winning value achieved an RMSE value lower than 0.85725<br>
+
+A tibble is built to showcase all of this information along with the random guessing performance. Doing so is streamlined by the use of the [<code>tibble()</code>](https://www.rdocumentation.org/packages/tibble/versions/3.1.6/topics/tibble) function from [the homonymous package](https://www.rdocumentation.org/packages/tibble/).
+
+``` {r random_guessing_2}
+# Evaluation tibble construction
+evaluation <- tibble(Model = c("Cinematch", "The Netflix Prize", "Random guessing"),
+                     MAE = c(NA, NA, Metrics::mae(validation$rating, y_hat_random)),
+                     MSE = c(NA, NA, Metrics::mse(validation$rating, y_hat_random)),
+                     RMSE = c(0.9525, 0.85725, Metrics::rmse(validation$rating, y_hat_random)))
+print(evaluation)
+```
+
+The obtained error values are way too high, as is to be expected from a random guess.
+
+## 3.3. Linear model
+Despite their simplicity and rigidness, linear (and logistic) models are important in the machine learning field since they are easily interpretable, fast (computing-wise) and form the basis of more complex deep learning neural networks. Concept-wise, these approaches just fit lines (or hyperplanes, depending on the dimensionality) through the training data but, depending on the scenario, the obtained predictions might be astoundingly accurate.<br>
+
+Note that there are non-negligible caviats that one needs to be aware of when working with linear models, since their advantages come at a cost. For one, linear models have a tendency to chase outliers in the training data (data exploration showcase the most relevant outliers within the working dataset), which might backfire when new data is supplied. However, linear models can be tweaked and tuned with different bias effects and later regularized to minimize the impact of its limitations.<br>
+
+\newpage
+The linear model to be built follows this mathematical expression:
+$$\hat y = \mu + b_i + b_u + \epsilon_{u,i}$$
+Where $\hat y$ is the prediction itself, $\mu$ is the average rating, $b_i$ a movie-based bias, $b_u$ a user-based bias and $\epsilon_{u,i}$ an inherent error term centered at 0 (thus negligible). Each of these elements builds upon each other, further developing the model, so the following paragraphs and chapters will go over their individual contributions.
+
+### 3.3.1. Mean baseline
+Taking aside movie and user bias, the linear model is merely the mean of the set's ratings (plus the inherent error term).
+$$\hat y = \mu + \epsilon_{u,i}$$
+
+In this simple linear model, the prediction array should be equal to $\mu$ in all of its indexes. To build such an array, the [<code>rep()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/rep) function can be used to repeat $\mu$ a given number of times (in this case, that number should be equal to the amount of ratings in the validation set).  
+To add the model's results to the previously constructed tibble, the [<code>bind_rows()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/bind) function is used, as showcased in the following code snippet.
+
+``` {r mean_baseline}
+# Mean baseline model construction
+mu <- mean(train_set$rating)
+y_hat_mean <- rep(mu, nrow(validation))
+
+evaluation <- bind_rows(evaluation, tibble(Model = "Linear model (mean baseline)",
+                                           MAE = Metrics::mae(validation$rating, y_hat_mean),
+                                           MSE = Metrics::mse(validation$rating, y_hat_mean),
+                                           RMSE = Metrics::rmse(validation$rating, y_hat_mean)))
+print(evaluation)
+```
+
+Despite the error being higher than ideal, note the significant improvement when comparing these recent results whith those of random guessing.
+
+### 3.3.2. Movie bias
+The linear model constructed with the ratings' mean ($\mu$) can be improved by adding movie bias ($b_i$).
+$$\hat y = \mu + b_i + \epsilon_{u,i}$$
+Each individual movie has its own associated bias, as is showcased in the following code snippet. Note that two variables are summarized (via the [<code>summarize()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/summarise) function): one takes $\mu$ into account whereas the other one does not (the first one being an adjusted movie bias and the latter one being an isolated movie bias).  
+The [<code>slice_head()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/slice) function is used to reduce the output's length since it is only needed to showcase the bias' values.
+
+\newpage
+``` {r movie_bias_1}
+# Bias per movie table
+b_i <- train_set %>%
+  group_by(movieId) %>% 
+  summarize(b_i = mean(rating - mu),
+            b_i_isolated = mean(rating))
+b_i %>% slice_head(n = 10)
+```
+
+To properly evaluate the set's $b_i$ values and their distribution, a plot built with [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions is highly recommended. To contrast the adjusted and isolated bias (in order to observe and evaluate their values, distributions and differences), their associated graphs would benefit from being plotted in tandem. Doing so is streamlined by the function [<code>plot_grid()</code>](https://www.rdocumentation.org/packages/cowplot/topics/plot_grid) from the [<strong>cowplot</strong>](https://www.rdocumentation.org/packages/cowplot/) package, which as its name suggests, helps to place plots in a grid-like distribution so that they can be easily compared/contrasted.  
+Note that there are several other functions (from several other packages) that work alongside [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) to place plots againts one another, but this document covers [<strong>cowplot</strong>](https://www.rdocumentation.org/packages/cowplot/) due to the high customizability of its [<code>plot_grid()</code>](https://www.rdocumentation.org/packages/cowplot/topics/plot_grid) function.<br>
+
+The following code snippet showcases the aforementioned functions at play. Note that the plots at hand are placed one over the other (instead of side by side) to adequate the document's formatting, but that can be easily changed via the function's parameters (using `ncol = 2` instead of `nrow = 2` would distribute the plots horizontally instead of vertically).
+
+``` {r movie_bias_2}
+# Isolated movie bias plot
+b_i_isolated_plot <- b_i %>%
+  ggplot(aes(x = b_i_isolated)) + 
+  geom_histogram(bins = 20, fill = "#8888ff", color = "#4020dd") +
+  ggtitle("Movie Bias (isolated)") +
+  xlab("Bias value") +
+  ylab("Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+\newpage
+``` {r movie_bias_3, fig.height = 6}
+# Adjusted movie bias plot
+b_i_plot <- b_i %>%
+  ggplot(aes(x = b_i)) + 
+  geom_histogram(bins = 20, fill = "#8888ff", color = "#4020dd") +
+  ggtitle("Movie Bias (adjusted)") +
+  xlab("Bias value") +
+  ylab("Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+
+# Both b_i plots are combined with plot_grid()
+plot_grid(b_i_isolated_plot, b_i_plot, labels = "AUTO", nrow = 2)
+```
+
+<br>
+
+The isolated bias plot showcases a normal albeit slightly left skewed distribution which spikes at `r median(b_i$b_i_isolated)` and possesses a mean value of `r mean(b_i$b_i_isolated)`. On the other hand, the adjusted bias plot showcases a normal albeit slightly left skewed distribution which spikes at `r median(b_i$b_i)` and possesses a mean value of `r mean(b_i$b_i)`.  
+These two plots are highly similar in shape, although not quite identical.<br>
+
+Using the movie bias to build upon the previous linear model leads to the predictions and estimates showcased in the following code snippet:
+
+``` {r movie_bias_4}
+# Linear model construction (mean + movie bias)
+y_hat_b_i <- mu + validation %>%
+  left_join(b_i, by = "movieId") %>%
+  .$b_i
+
+evaluation <- bind_rows(evaluation,
+                        tibble(Model = "Linear model (mean + movie bias)",
+                               MAE = Metrics::mae(validation$rating, y_hat_b_i),
+                               MSE = Metrics::mse(validation$rating, y_hat_b_i),
+                               RMSE = Metrics::rmse(validation$rating, y_hat_b_i)))
+print(evaluation)
+```
+
+The error reduction, product of taking movie bias into account, results in a RMSE value lower of that of Cinematch.
+
+### 3.3.3. User bias
+The linear model constructed with the ratings' mean ($\mu$) and the movie bias ($b_i$) can be improved upon by adding user bias ($b_u$), thus bringing every piece together.
+$$\hat y = \mu + b_i + b_u + \epsilon_{u,i}$$
+As can be appreciated, this formula finally resembles the one initially presented, being every element now in place. Note that, as was the case with the movie bias, two variables are summarized via the [<code>summarize()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/summarise) function: one takes $\mu$ and $b_i$ into account whereas the other one does not (the first one being an adjusted user bias and the latter one being an isolated user bias).  
+The [<code>slice_head()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/slice) function is used to reduce the output's length since it is only needed to showcase the bias' values.
+
+``` {r user_bias_1}
+# Bias per user
+b_u <- train_set %>%
+  left_join(b_i, by = 'movieId') %>%
+  group_by(userId) %>% 
+  summarize(b_u = mean(rating - mu - b_i),
+            b_u_isolated = mean(rating))
+b_u %>% slice_head(n = 10)
+```
+
+To properly evaluate the set's $b_u$ values and their distribution, a plot built with [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions is highly recommended. Note that there are two distinct plots: the first one corresponds to the isolated user bias effect whereas the following one takes into account the ratings' mean and the movie bias, both participant in the linear model being developed. While with the movie bias effect both of these plots were identical, that is the case no more as the adapted user bias takes the movie bias into account and, since that is no constant value, the whole graph is changed (it is not a simple horizontal displacement, which was the case with the movie bias' plots).
+
+``` {r user_bias_2, fig.height = 6}
+# Isolated user bias plot
+b_u_isolated_plot <- b_u %>%
+  ggplot(aes(x = b_u_isolated)) + 
+  geom_histogram(bins = 20, fill = "#8888ff", color = "#4020dd") +
+  ggtitle("User Bias (isolated)") +
+  xlab("Bias value") +
+  ylab("Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+
+# Adjusted user bias plot
+b_u_plot <- b_u %>%
+  ggplot(aes(x = b_u)) + 
+  geom_histogram(bins = 20, fill = "#8888ff", color = "#4020dd") +
+  ggtitle("User Bias (adjusted)") +
+  xlab("Bias value") +
+  ylab("Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+
+# Both b_u plots are combined with plot_grid()
+plot_grid(b_u_isolated_plot, b_u_plot, labels = "AUTO", nrow = 2)
+```
+
+<br>
+
+The isolated bias plot showcases a normal distribution spiking at `r median(b_u$b_u_isolated)` and possesses a mean value of `r mean(b_u$b_u_isolated)`. On the other hand, the adjusted bias plot showcases a normal albeit slightly left skewed distribution which spikes at `r median(b_u$b_u)` and possesses a mean value of `r mean(b_u$b_u)`.
+These two plots are similar in shape, although not quite as similar as the movie bias plots and definitely not identical (the reason being no other than the movie bias being taken into account, $\mu$ merely displaces the plot horizontally).<br>
+
+Using the user bias to build upon the previous linear model leads to the predictions and estimates showcased in the following code snippet:
+
+``` {r user_bias_3}
+# Linear model construction (mean + movie bias + user bias)
+y_hat_b_u <- validation %>%
+  left_join(b_i, by='movieId') %>%
+  left_join(b_u, by='userId') %>%
+  mutate(y_hat = mu + b_i + b_u) %>%
+  .$y_hat
+```
+
+\newpage
+``` {r user_bias_4}
+evaluation <- bind_rows(evaluation, 
+                        tibble(Model = "Linear model (mean + movie and user bias)",
+                               MAE = Metrics::mae(validation$rating, y_hat_b_u),
+                               MSE = Metrics::mse(validation$rating, y_hat_b_u),
+                               RMSE = Metrics::rmse(validation$rating, y_hat_b_u)))
+print(evaluation)
+```
+
+The inclusion of both bias reduces all error metrics almost to The Netflix Prize threshold value. Is the model that good?
+
+### 3.4. Movie recommendations
+Having completed the linear model through the use of all its different elements (thus reducing the error metrics as much as feasible), it is time to observe its movie recommendation to properly evaluate its behavior.<br>
+
+To output the model's predicted best movies, they are to be sorted by $\hat y$ in descending order (since it weight the ratings mean and both bias). Note that most movies have multiple ratings and it is likely that the best (and worst) movies have been rated as such multiple times so, to avoid duplicated films in the prediction output, the function [<code>unique()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/unique) is to be used since it returns a vector, dataframe or array without any duplicate elements or rows.  
+Let's limit the prediction to the top 10 movies through the use of the [<code>slice_head()</code>](https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/slice) function (with <code>n = 10</code>) as argument to match said criteria).
+
+``` {r linear_recommendation_1}
+# Top 10 movie recommendation by the linear model
+top10_prediction_linear <- test_set %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  mutate(y_hat = mu + b_i + b_u) %>%
+  arrange(desc(y_hat)) %>%
+  select(title) %>%
+  unique() %>%
+  slice_head(n = 10)
+top10_prediction_linear_df <- data.frame(Title = top10_prediction_linear,
+                                         Rating = rep(NA, 10), 
+                                         Count = rep(NA, 10))
+
+for (i in 1:10) {
+  indexes <- which(test_set$title == as.character(top10_prediction_linear[i]))
+  top10_prediction_linear_df$Rating[i] <- mean(test_set$rating[indexes])
+  top10_prediction_linear_df$Count[i] <- sum(
+    test_set$title == as.character(top10_prediction_linear[i])
+  )
+}
+```
+
+\newpage
+``` {r linear_recommendation_2}
+print(top10_prediction_linear_df)
+```
+
+Obtaining the worst 10 predicted results follows a similar procedure, although $\hat y$ is to be sorted in ascending order.
+
+``` {r linear_recommendation_3}
+# Worst 10 movie recommendation by the linear model
+worst10_prediction_linear <- test_set %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  mutate(y_hat = mu + b_i + b_u) %>%
+  arrange(b_i) %>%
+  select(title) %>%
+  unique() %>%
+  slice_head(n = 10)
+worst10_prediction_linear_df <- data.frame(Title = worst10_prediction_linear,
+                                           Rating = rep(NA, 10),
+                                           Count = rep(NA, 10))
+
+for (i in 1:10) {
+  indexes <- which(test_set$title == as.character(worst10_prediction_linear[i]))
+  worst10_prediction_linear_df$Rating[i] <- mean(test_set$rating[indexes])
+  worst10_prediction_linear_df$Count[i] <- sum(
+    test_set$title == as.character(worst10_prediction_linear[i])
+  )
+}
+```
+
+\newpage
+``` {r linear_recommendation_4}
+print(worst10_prediction_linear_df)
+```
+
+There is a clear issue with the proposed films: although the top 10 movie recommendations have an overall higher rating than the worst 10 ones, there are cases where a given movie has the same average rating and overall count in both sets. What's more, most of the suggested movies have not enough ratings to properly assess them as top (or worst) movie recommendation (you can't recommend a film to a population based on a single rating by a single user). To correct such problematic, the model needs to be regularized.
+
+## 3.4. Regularization
+Regularization consists in penalizing values that differ from the actual observed result, applying a stronger penalty the further they fall from the desired value. Through this mechanism, regularization fixes fitting issues such as:
+
+* Overfitting: overfitted models work great for the training data since it is overly adapted to it, but does not generalize well to real world scenarios. Overfitted lines are often characterized by an extremely complex shape which follows most of the training data points, and regularization can help simplifying its shape so that it better fits the actual data behavior/pattern.
+
+* Underfitting: underfitted models are too simple, generalizable but not meaningful (less variance but more bias towards the wrong answers, meaning that they hardly represent the data).
+
+There are many regularization approaches and many great examples in literature that explain them and their intricacies in extensive detail. However, that goes beyond the scope of this document.  
+The most important aspect is that isolating the bias effect from the regularization mathematical expression leads to the following equalities:
+$$\hat b_i=\frac{1}{n_i+\lambda}\sum_{u=1}^{n_i}(y_{u,i}-\hat \mu)$$
+$$\hat b_u=\frac{1}{n_u+\lambda}\sum_{i=1}^{n_u}( y_{u,i}-\hat b_i-\hat \mu)$$
+
+With the last two formulas in mind, a regularization function can be constructed: the mean is obtained as usual, the bias effect follows said formulas and the predictions are constructed just like they were in the latest linear model (which contemplated both movie and user bias). The function should return the RMSE value since the goal is to iterate through penalty values ($\lambda$) to minimize the RMSE.
+
+\newpage
+``` {r regularization_1}
+# Regularization function
+regularization <- function(lambda, train_set, test_set){
+  mu <- mean(train_set$rating)
+
+  b_i <- train_set %>% 
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu) / (n() + lambda))
+
+  b_u <- train_set %>% 
+    left_join(b_i, by="movieId") %>%
+    filter(!is.na(b_i)) %>%
+    group_by(userId) %>%
+    summarize(b_u = sum(rating - mu - b_i) / (n() + lambda))
+
+  predicted_ratings <- test_set %>% 
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    filter(!is.na(b_i), !is.na(b_u)) %>%
+    mutate(pred = mu + b_i + b_u) %>%
+    pull(pred)
+  
+  return(Metrics::rmse(predicted_ratings, test_set$rating))
+}
+```
+
+The next step would be to make use of the recently created function to iterate through the penalty values. To do so, [<code>sapply()</code>](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lapply) iterates through the elements of an array applying a supplied function to each (beware the computing time). Holding each returned value in a vector is recommended to evaluate the results and plot them if needed.
+
+``` {r regularization_2}
+# The regularization function at play
+lambdas <- seq(0, 10, 0.25)
+lambdas_rmse <- sapply(lambdas,
+                       regularization, 
+                       train_set = train_set, 
+                       test_set = test_set)
+lambdas_tibble <- tibble(Lambda = lambdas, RMSE = lambdas_rmse)
+print(lambdas_tibble)
+```
+
+From these results, it can be seen that the best RMSE result is achieved with `r lambdas[which.min(lambdas_rmse)]`. Note that the improvement is somewhat subtle.
+
+\newpage
+Once again, plotting the results is highly recommended to visualize how different lambda values affect the RMSE. [<code>ggplot()</code>](https://www.rdocumentation.org/packages/ggplot2/versions/3.3.5/topics/ggplot) and its auxiliary functions are the ideal tools to do so.
+
+``` {r regularization_3}
+# Lambda's effect on RMSE plot
+lambdas_tibble %>%
+  ggplot(aes(x = Lambda, y = RMSE)) +
+  geom_point() +
+  ggtitle("Lambda's effect on RMSE") +
+  xlab("Lambda") +
+  ylab("RMSE") +
+  scale_y_continuous(n.breaks = 6, labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -5, face = "bold"), 
+        axis.title.y = element_text(vjust = 10, face = "bold"), 
+        plot.margin = margin(0.7, 0.5, 1, 1.2, "cm"))
+```
+
+The plot clearly showcases that the lambda that returns the lowest RMSE is `r lambdas[which.min(lambdas_rmse)]` (the closest point to 5 from the right). Having obtained this value, the regularized linear model can be constructed; the following code snippet showcases the process.
+
+``` {r regularization_4}
+# Regularized linear model construction
+lambda <- lambdas[which.min(lambdas_rmse)]
+
+mu <- mean(train_set$rating)
+```
+
+\newpage
+``` {r regularization_5}
+b_i_regularized <- train_set %>% 
+  group_by(movieId) %>%
+  summarize(b_i = sum(rating - mu)/(n()+lambda))
+
+b_u_regularized <- train_set %>% 
+  left_join(b_i, by="movieId") %>%
+  group_by(userId) %>%
+  summarize(b_u = sum(rating - b_i - mu)/(n()+lambda))
+
+y_hat_regularized <- validation %>% 
+  left_join(b_i_regularized, by = "movieId") %>%
+  left_join(b_u_regularized, by = "userId") %>%
+  mutate(prediction = mu + b_i + b_u) %>%
+  pull(prediction)
+
+evaluation <- bind_rows(evaluation,
+                        tibble(Model = "Linear model with regularized bias",
+                               MAE  = Metrics::mae(validation$rating, y_hat_regularized),
+                               MSE  = Metrics::mse(validation$rating, y_hat_regularized),
+                               RMSE = Metrics::rmse(validation$rating, y_hat_regularized)))
+print(evaluation)
+```
+
+As previously stated, the RMSE improvement is somewhat subtle.
+
+### 3.4.1. Movie recommendations
+
+The process to obtain the top 10 movie recommendations is replicated (now using regularized data).
+
+``` {r regularized_recommendation_1}
+# Top 10 movie recommendation by the regularized linear model
+top10_prediction_regularized <- test_set %>%
+  left_join(b_i_regularized, by = "movieId") %>%
+  left_join(b_u_regularized, by = "userId") %>%
+  mutate(y_hat = mu + b_i + b_u) %>%
+  arrange(desc(y_hat)) %>%
+  select(title) %>%
+  unique() %>%
+  slice_head(n = 10)
+top10_prediction_regularized_df <- data.frame(Title = top10_prediction_regularized,
+                                              Rating = rep(NA, 10),
+                                              Count = rep(NA, 10))
+```
+
+\newpage
+``` {r regularized_recommendation_2}
+for (i in 1:10) {
+  indexes <- which(test_set$title == as.character(top10_prediction_regularized[i]))
+  top10_prediction_regularized_df$Rating[i] <- mean(test_set$rating[indexes])
+  top10_prediction_regularized_df$Count[i] <- sum(
+    test_set$title == as.character(top10_prediction_regularized[i])
+  )
+}
+print(top10_prediction_regularized_df)
+```
+
+Obtaining the worst 10 predicted results follows a similar procedure, although $\hat y$ is to be sorted in ascending order.
+
+``` {r regularized_recommendation_3}
+# Worst 10 movie recommendation by the regularized linear model
+worst10_prediction_regularized <- test_set %>%
+  left_join(b_i_regularized, by = "movieId") %>%
+  left_join(b_u_regularized, by = "userId") %>%
+  mutate(y_hat = mu + b_i + b_u) %>%
+  arrange(y_hat) %>%
+  select(title) %>%
+  unique() %>%
+  slice_head(n = 10)
+worst10_prediction_regularized_df <- data.frame(Title = worst10_prediction_regularized,
+                                                Rating = rep(NA, 10),
+                                                Count = rep(NA, 10))
+```
+
+\newpage
+``` {r regularized_recommendation_4}
+for (i in 1:10) {
+  indexes <- which(test_set$title == as.character(worst10_prediction_regularized[i]))
+  worst10_prediction_regularized_df$Rating[i] <- mean(test_set$rating[indexes])
+  worst10_prediction_regularized_df$Count[i] <- sum(
+    test_set$title == as.character(worst10_prediction_regularized[i])
+  )
+}
+print(worst10_prediction_regularized_df)
+```
+
+## 3.5. Matrix factorization
+The end of the line. This exercise's goal was to reach this final step, since it was the approach that surpassed The Netflix Prize challenge and has been proven to be superior to classic nearest-neighbor techniques for product recommendations. [This highly recommended video](https://www.youtube.com/watch?v=wTUSz-HSaBg) by Dr. David Eisenbud (director of the Mathematical Sciences Research Institute) brilliantly explains the core concept, its usage and its limitations. Even [Wikipedia's article on the matter](https://en.wikipedia.org/wiki/Matrix_factorization_(recommender_systems)) is highly explanatory but, all in all, this mathematical model helps the system split a set into multiple smaller objects through an ordered rectangular array of numbers or functions in order to discover the features or information underlying the interactions between users and items.<br>
+
+Despite the complexities of the matter, the [<strong>recosystem</strong>](https://www.rdocumentation.org/packages/recosystem/) package bundles a collection of functions to simplify the process at hand, which goes as follows:
+
+* First, the training and testing set need to be converted into the library's own input format.
+
+* Secondly, an empty system/model object is to be created. The function [<code>Reco()</code>](https://www.rdocumentation.org/packages/recosystem/versions/0.5/topics/Reco) is the one responsible of such task.
+
+* Thirdly, the model object is to be tuned. Doing so requires the use of the [<code>tune()</code>](https://www.rdocumentation.org/packages/recosystem/versions/0.5/topics/tune) function, which has a great amount of customizability. Detailing every intricacy goes beyond the scope of this document, but the hyperlinked RDocumentation page is highly documented. Beware that this tuning process requires a fair amount of computing power and time (perhaps the most costly process of the entire document).
+
+* The forth step trains the model (stored within the previously created object) so that it fits the supplied data. The function [<code>train()</code>](https://www.rdocumentation.org/packages/recosystem/versions/0.5/topics/train) is the one responsible of such task.
+
+* Lastly, the [<code>predict()</code>](https://www.rdocumentation.org/packages/recosystem/versions/0.5/topics/predict) function yields the $\hat y$ prediction with which is possible to compute the model's RMSE and thus evaluate its performance
+
+The following code snippet goes over these 5 steps (the commented lines highlight the one at hand). As was stated during their detailing, some of them are bound to a considerable amount of computing power and time (so beware of that).
+
+\newpage
+``` {r matrix_factorization_1}
+# 1. The training and testing sets need to be converted into recosystem input format
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+train_recosystem <- with(train_set, data_memory(user_index = userId, 
+                                                item_index = movieId,
+                                                rating     = rating))
+test_recosystem <- with(test_set, data_memory(user_index = userId, 
+                                              item_index = movieId, 
+                                              rating     = rating))
+
+# 2. The model object is created
+recommendation_system <- Reco()
+
+# 3. The model is tuned
+tuning <- recommendation_system$tune(train_recosystem, opts = list(dim = c(10, 20, 30),
+                                                                   lrate = c(0.1, 0.2),
+                                                                   nthread  = 4,
+                                                                   niter = 10))
+
+# 4. The model is trained
+recommendation_system$train(train_recosystem, opts = c(tuning$min,
+                                                       nthread = 4,
+                                                       niter = 20))
+
+# 5. A prediction is made
+y_hat_MF <-  recommendation_system$predict(test_recosystem, out_memory())
+```
+
+\newpage
+With $\hat y$ obtained, the model's RMSE can be computed and added to the evaluation table.
+
+``` {r matrix_factorization_2}
+# The model's RMSE is computed and added to the evaluation table
+evaluation <- bind_rows(evaluation,
+                        tibble(Model = "Matrix factorization",
+                               MAE  = Metrics::mae(validation$rating, y_hat_MF),
+                               MSE  = Metrics::mse(validation$rating, y_hat_MF),
+                               RMSE = Metrics::rmse(validation$rating, y_hat_MF)))
+print(evaluation)
+```
+
+### 3.5.1. Movie recommendations
+
+The process to obtain the top 10 movie recommendations has changed ever-so-slightly, now requiring the use of a newly create tibble which results from joining together the testing data, which was used to construct the <code>y_hat_MF</code> prediction array, and that very same array. After that, procedure's the same one as in previous movie recommendation code snippets.
+
+``` {r MF_recommendation_1, eval = FALSE}
+# Top 10 movie recommendation by the matrix factorization model
+top10_prediction_MF <- tibble(title = test_set$title, y_hat = y_hat_MF) %>%
+  arrange(desc(y_hat)) %>%
+  select(title) %>%
+  unique() %>%
+  slice_head(n = 10)
+top10_prediction_MF_df <- data.frame(Title = top10_prediction_MF,
+                                     Rating = rep(NA, 10),
+                                     Count = rep(NA, 10))
+
+for (i in 1:10) {
+  indexes <- which(test_set$title == as.character(top10_prediction_MF[i,]))
+  top10_prediction_MF_df$Rating[i] <- mean(test_set$rating[indexes])
+  top10_prediction_MF_df$Count[i] <- sum(
+    test_set$title == as.character(top10_prediction_MF[i,])
+  )
+}
+print(top10_prediction_MF_df)
+```
+
+\newpage
+Obtaining the worst 10 predicted results follows a similar procedure, although $\hat y$ is to be sorted in ascending order.
+
+``` {r MF_recommendation_2, eval = FALSE}
+# Worst 10 movie recommendation by the matrix factorization model
+worst10_prediction_MF <- tibble(title = test_set$title, y_hat = y_hat_MF) %>%
+  arrange(y_hat) %>%
+  select(title) %>%
+  unique() %>%
+  slice_head(n = 10)
+worst10_prediction_MF_df <- data.frame(Title = worst10_prediction_MF,
+                                       Rating = rep(NA, 10),
+                                       Count = rep(NA, 10))
+
+for (i in 1:10) {
+  indexes <- which(test_set$title == as.character(worst10_prediction_MF[i,]))
+  worst10_prediction_MF_df$Rating[i] <- mean(test_set$rating[indexes])
+  worst10_prediction_MF_df$Count[i] <- sum(
+    test_set$title == as.character(worst10_prediction_MF[i,])
+  )
+}
+print(worst10_prediction_MF_df)
+```
+
+<br>
+
+\newpage
+# 4. Conclusion
+This document details to considerable length the process of building a recommender system. The MovieLens dataset has been loaded and manipulated to fit the workspace, and its content has been throughfully explored with many of its most relevant aspects being plotted for its proper visual examination. A baseline model was built through random guessing, after which both a linear model and a matrix factorization based model were developed. Both of these models represent different approaches in the construction of a recommender system: the first one being the one upon which the Cinematch algorithm was built whereas the latter one was the approach to dethrone Cinematch in The Netflix Prize challenge.<br>
+
+All in all, both models provide reliable approaches as shown in the evaluation table/tibble and through the recommended movies. However, having used both, it is undeniable that matrix factorization yields better results (as was to be expected since the linear nature of linear models usually lead to underfitting issues in non-linear data). Increasing the model's dimensionality allow the model to better represent more complex data distributions at the risk of being overfit (as is, overly adapted to the supplied data and not generalizable to new data), so a validation test was an utmost necessity.
+
+## 4.1. Limitations
+The most notorious limitation is that only two of the dataset's predictors have been used: users and movies. Genres could play a significant role and lead to a relevant decrease in the RMSE. Besides that, it is worth noting that some models (particularly the matrix factorization one) could have benefited from a finer tuning process (although the potential improvements are unclear, I actually doubt that it would have improved that much).  
+Time has also been a limitation for me. I'm sure it has been noticed that the first chapters have been written with more affection than the last ones, so I hope that has not been much of an issue and that the points and processes I have been trying to showcase have been understood (I will most likely rewrite whichever parts I deem necesary in the future).
+
+## 4.2. Future work
+I would love to come back to this project to expand upon it with new and different approaches, perhaps even documenting a few intricacies that have been left aside to keep this document' scope manageable. Truth is that there exist an overwhelming amount of machine learning approaches that would be interesting to test and build a recommender system with. Also, as I have already commented, the latter parts of the document would benefit from a polish layer, so I will most likely rewrite whichever parts I deem necesary as soon as I find the time.
+
+<br>
+
+\newpage
+# 5. Bibliography
+Work In Progress (WIP)
+
+<br>
+
+<br>

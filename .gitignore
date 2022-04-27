@@ -1,0 +1,11 @@
+# Ignore the data directory
+ml-10M100K/
+
+# Ignore the RPubs publish directory
+rsconnect/
+
+# Ignore unneeded workspace files
+**/*.Rhistory
+
+# Ignore testing files
+test.*
